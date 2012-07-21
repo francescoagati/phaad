@@ -1,8 +1,352 @@
 module Phaad
+
+
+  module Emitters
+
+    def emit_string_content(sexp)
+      
+      if sexp.size > 1
+         sexp[1..-1].each_with_index do |exp, i|
+           unless exp[0] == :string_embexpr && exp[1][0][0] == :void_stmt
+             process exp
+             emit " . " if i < sexp.size - 2
+           end
+         end
+       else
+         emit '""'
+       end
+      
+    end
+
+    def emit_defs(sexp)
+      
+           raise NotImplementedError, sexp.inspect unless sexp[3][0] == :@ident
+            emit "static function "
+            emit sexp[3][1]
+            emit "("
+            if sexp[4][0] == :params
+              process sexp[4] # params
+            elsif sexp[4][0] == :paren && sexp[4][1][0] == :params
+              process sexp[4][1]
+            else
+              raise NotImplementedError, sexp.inspect
+            end
+            emit ") {\n"
+            process_statements [sexp[5]]
+            emit "}\n"
+      
+    end
+
+    def emit_def(sexp)
+      raise NotImplementedError, sexp.inspect unless sexp[1][0] == :@ident
+      emit "function "
+      emit sexp[1][1]
+      emit "("
+      if sexp[2][0] == :params
+        process sexp[2] # params
+      elsif sexp[2][0] == :paren && sexp[2][1][0] == :params
+        process sexp[2][1]
+      else
+        raise NotImplementedError, sexp.inspect
+      end
+      emit ") {\n"
+      process_statements [sexp[3]]
+      emit "}\n"
+    end
+
+    def emit_while_mod(sexp)
+
+      emit "while("
+      emit "!(" if sexp.first == :until_mod
+      process sexp[1]
+      emit ")" if sexp.first == :until_mod
+      emit ") {\n"
+      process_statements [sexp[2]]
+      emit "}\n"
+
+    end
+
+    def emit_params(sexp)
+
+      first = true
+      if sexp[1]
+        sexp[1].each do |param|
+          emit ", " unless first
+          first = false
+
+          process param
+        end
+      end
+
+      if sexp[2]
+        sexp[2].each do |param|
+          emit ", " unless first
+          first = false
+
+          process param[0]
+          emit " = "
+          process param[1]
+        end
+      end
+
+    end
+
+    def emit_case(sexp)
+
+      emit "switch("
+      process sexp[1]
+      emit ") {\n"
+      indent
+      # exp stores the next statement.
+      exp = sexp[2]
+      while exp
+        if exp[0] == :when
+          exp[1].each_with_index do |each_case, i|
+            emit "case "
+            process each_case
+            emit ":"
+            emit " " if i < exp[1].size - 1
+          end
+          emit "\n"
+          process_statements exp[2] if exp[2]
+        elsif exp[0] == :else
+          emit "default:"
+          emit "\n"
+          process_statements exp[1] if exp[1]
+        else
+          raise NotImplementedError, sexp.inspect
+        end
+        indent
+        emit "break;\n"
+        outdent
+        exp = exp[3]
+      end
+      outdent
+      emit "}\n"
+
+    end
+
+    def emit_for(sexp)
+      if !sexp[1][0].is_a?(Array) && sexp[2][0] == :dot2 || sexp[2][0] == :dot3
+        emit "for("
+        process sexp[1]
+        emit " = "
+        process sexp[2][1]
+        emit "; "
+        process sexp[1]
+        emit sexp[2][0] == :dot2 ? " <= " : " < "
+        process sexp[2][2]
+        emit "; "
+        process sexp[1]
+        emit "++"
+      else
+        emit "foreach("
+        process sexp[2]
+        emit " as "
+        if !sexp[1][0].is_a?(Array)
+          process sexp[1]
+        elsif sexp[1][0].is_a?(Array) && sexp[1].size == 2
+          process sexp[1][0]
+          emit " => "
+          process sexp[1][1]
+        else
+          raise NotImplementedError, sexp.inspect
+        end
+      end
+      emit ") {\n"
+      process_statements sexp[3]
+      emit "}\n"
+    end
+
+    def emit_while(sexp)
+
+      emit "while("
+      emit "!(" if sexp.first == :until
+      process sexp[1]
+      emit ")" if sexp.first == :until
+      emit ") {\n"
+      process_statements sexp[2]
+      emit "}\n"
+
+    end
+
+    def emit_if_mod(sexp)
+
+      emit "if("
+      emit "!(" if sexp.first == :unless_mod
+      process sexp[1]
+      emit ")" if sexp.first == :unless_mod
+      emit ") {\n"
+      process_statements [sexp[2]]
+      emit "}\n"
+
+    end
+
+    def emit_if(sexp)
+      if sexp.first == :if
+        emit "if("
+      elsif sexp.first == :unless
+        emit "if(!("
+      else
+        emit "elseif("
+      end
+      process sexp[1]
+      emit ")" if sexp.first == :unless
+      emit ") {\n"
+      process_statements(sexp[2])
+      emit "}"
+      if sexp[3]
+        emit " "
+        process sexp[3]
+      else
+        emit "\n"
+      end
+    end
+
+    def emit_call(sexp)
+
+      if sexp[1][1][0] == :@const
+        if sexp[3][1] == "new"
+          emit "new "
+          process sexp[1]
+        else
+          process sexp[1]
+          emit "::"
+          emit sexp[3][1]
+        end
+      else
+        process sexp[1]
+        emit "->"
+        emit sexp[3][1]
+      end
+
+    end
+
+    def emit_command(sexp)
+
+      if sexp[1][0] == :@ident
+        no_brackets = %w{global echo var public}
+        emit sexp[1][1]
+        emit no_brackets.include?(sexp[1][1]) ? " " : "("
+        if sexp[2][0] == :args_add_block
+          process sexp[2]
+        else
+          sexp[2].each(&method(:process))
+        end
+        emit ")" unless no_brackets.include?(sexp[1][1])
+      else
+        raise NotImplementedError, sexp.inspect
+      end
+
+    end
+
+    def emit_command_call(sexp)
+
+      if sexp[1][0]== :vcall
+        process sexp[1][1]
+      end
+
+      if sexp[1][0] == :var_ref && sexp[1][1][0] == :@ident && sexp[2] == :"." &&
+          sexp[3][0] == :@ident && sexp[4][0] == :args_add_block
+        process sexp[1]
+        emit "->"
+        emit sexp[3][1]
+        emit "("
+        process sexp[4]
+        emit ")"
+      elsif sexp[1][0] == :var_ref && sexp[1][1][0] == :@const &&
+          sexp[3][0] == :@ident && sexp[4][0] == :args_add_block
+        if sexp[3][1] == "new"
+          emit "new "
+          process sexp[1]
+        else
+          process sexp[1]
+          emit "::"
+          emit sexp[3][1]
+        end
+        emit "("
+        process sexp[4]
+        emit ")"
+      else
+        raise NotImplementedError, sexp.inspect
+      end
+    end
+
+    def emit_method_add_arg(sexp)
+
+      if sexp[1][0] == :fcall && sexp[1][1][0] == :@ident
+        emit sexp[1][1][1]
+        emit "("
+        process sexp[2][1] if sexp[2][1]
+        emit ")"
+      elsif sexp[1][0] == :call
+        process sexp[1]
+        emit "("
+        process sexp[2][1] if sexp[2][1]
+        emit ")"
+      else
+        raise NotImplementedError, sexp.inspect
+      end
+    end
+
+    def emit_array(sexp)
+      emit "array("
+      if sexp[1]
+        if sexp[1][0] == :assoclist_from_args
+          process sexp[1]
+        else
+          sexp[1].each_with_index do |param, i|
+            process param
+            emit ", " if i < sexp[1].size - 1
+          end
+        end
+      end
+      emit ")"
+    end
+
+    def emit_massign(sexp)
+
+      lhs = sexp[1]
+      rhs = sexp[2]
+
+      # hack, no idea why is the sexp like this.
+      rhs.shift if rhs.first == :mrhs_new_from_args
+      rhs = rhs[0] + [rhs[1]]
+      unless lhs.size == rhs.size
+        raise NotImplementedError, sexp.inspect
+      end
+
+      lhs.zip(rhs).each do |l, r|
+        process l
+        emit " = "
+        process r
+        emit ";\n"
+      end
+
+
+    end
+
+    def emit_class(sexp)
+      if sexp[1][1][0] != :@const || (sexp[2] && sexp[2][1][0] != :@const)
+        raise NotImplementedError, sexp.inspect
+      end
+      emit "class "
+      emit sexp[1][1][1]
+      emit " extends #{sexp[2][1][1]}" if sexp[2]
+      emit " {\n"
+      process_statements [sexp[3]]
+      emit "}\n"
+    end
+
+
+  end
+
   NotImplementedError = Class.new(StandardError)
 
   class Generator
     attr_reader :emitted, :sexp
+
+    include Emitters
 
     def initialize(str_or_sexp, &blk)
       if block_given?
@@ -26,8 +370,8 @@ module Phaad
         process(sexp)
         should_not_be = [ [:bodystmt, [[:void_stmt]], nil, nil, nil] ]
         first_should_not_be = [:void_stmt, :def, :bodystmt, :if, :else, :elsif,
-          :unless, :while, :until, :while_mod, :until_mod, :if_mod, :unless_mod,
-          :massign, :class, :for, :case, :defs]
+                               :unless, :while, :until, :while_mod, :until_mod, :if_mod, :unless_mod,
+                               :massign, :class, :for, :case, :defs]
         emit ";\n" if !should_not_be.include?(sexp) && !first_should_not_be.include?(sexp.first)
       end
       outdent unless options[:indent] == false
@@ -50,28 +394,17 @@ module Phaad
 
     def process(sexp)
       case sexp.first
-        
-        
+
+
       when :xstring_literal
         emit sexp[1][0][1]
-        
-        
+
+
       when :void_stmt
-      when :@int, :@float
-        emit sexp[1]
+      when :@int, :@float then emit sexp[1]
       when :@tstring_content
         emit "\"#{sexp[1].gsub('"', '\"')}\""
-      when :string_content 
-        if sexp.size > 1
-          sexp[1..-1].each_with_index do |exp, i|
-            unless exp[0] == :string_embexpr && exp[1][0][0] == :void_stmt
-              process exp
-              emit " . " if i < sexp.size - 2
-            end
-          end
-        else
-          emit '""'
-        end
+      when :string_content then emit_string_content(sexp)
       when :string_literal
         process(sexp[1])
       when :string_embexpr
@@ -96,23 +429,7 @@ module Phaad
         process(sexp[1])
         emit " = "
         process(sexp[2])
-      when :massign
-        lhs = sexp[1]
-        rhs = sexp[2]
-
-        # hack, no idea why is the sexp like this.
-        rhs.shift if rhs.first == :mrhs_new_from_args
-        rhs = rhs[0] + [rhs[1]]
-        unless lhs.size == rhs.size
-          raise NotImplementedError, sexp.inspect
-        end
-
-        lhs.zip(rhs).each do |l, r|
-          process l
-          emit " = "
-          process r
-          emit ";\n"
-        end
+      when :massign then emit_massign(sexp)
       when :opassign
         raise NotImplementedError, sexp.inspect unless sexp[2][0] == :@op
         process(sexp[1])
@@ -140,270 +457,39 @@ module Phaad
         emit "break"
       when :next
         emit "continue"
-      when :method_add_arg
-        if sexp[1][0] == :fcall && sexp[1][1][0] == :@ident
-          emit sexp[1][1][1]
-          emit "("
-          process sexp[2][1] if sexp[2][1]
-          emit ")"
-        elsif sexp[1][0] == :call
-          process sexp[1]
-          emit "("
-          process sexp[2][1] if sexp[2][1]
-          emit ")"
-        else
-          raise NotImplementedError, sexp.inspect
-        end
+      when :method_add_arg then emit_method_add_arg(sexp)
       when :ifop
         process sexp[1]
         emit " ? "
         process sexp[2]
         emit " : "
         process sexp[3]
-      when :command
-        if sexp[1][0] == :@ident
-          no_brackets = %w{global echo var public}
-          emit sexp[1][1]
-          emit no_brackets.include?(sexp[1][1]) ? " " : "("
-          if sexp[2][0] == :args_add_block
-            process sexp[2]
-          else
-            sexp[2].each(&method(:process))
-          end
-          emit ")" unless no_brackets.include?(sexp[1][1])
-        else
-          raise NotImplementedError, sexp.inspect
-        end
+      when :command then emit_command(sexp)
       when :args_add_block
         sexp[1].each do |s|
           process s
           emit ", " unless s == sexp[1].last
         end
-      when :call
-        if sexp[1][1][0] == :@const
-          if sexp[3][1] == "new"
-            emit "new "
-            process sexp[1]
-          else
-            process sexp[1]
-            emit "::"
-            emit sexp[3][1]
-          end
-        else
-          process sexp[1]
-          emit "->"
-          emit sexp[3][1]
-        end
+      when :call then emit_call(sexp)
       when :vcall
         emit "$" + sexp[1][1]
-      when :command_call
-        if sexp[1][0] == :var_ref && sexp[1][1][0] == :@ident && sexp[2] == :"." && 
-          sexp[3][0] == :@ident && sexp[4][0] == :args_add_block
-          process sexp[1]
-          emit "->"
-          emit sexp[3][1]
-          emit "("
-          process sexp[4]
-          emit ")"
-        elsif sexp[1][0] == :var_ref && sexp[1][1][0] == :@const &&
-          sexp[3][0] == :@ident && sexp[4][0] == :args_add_block
-          if sexp[3][1] == "new"
-            emit "new "
-            process sexp[1]
-          else
-            process sexp[1]
-            emit "::"
-            emit sexp[3][1]
-          end
-          emit "("
-          process sexp[4]
-          emit ")"
-        else
-          raise NotImplementedError, sexp.inspect
-        end
-      when :if, :elsif, :unless
-        if sexp.first == :if
-          emit "if("
-        elsif sexp.first == :unless
-          emit "if(!("
-        else
-          emit "elseif("
-        end
-        process sexp[1]
-        emit ")" if sexp.first == :unless
-        emit ") {\n"
-        process_statements(sexp[2])
-        emit "}"
-        if sexp[3]
-          emit " "
-          process sexp[3]
-        else
-          emit "\n"
-        end
+      when :command_call then emit_command_call(sexp)
+      when :if, :elsif, :unless then emit_if(sexp)
       when :else
         emit "else {\n"
         process_statements(sexp[1]) if sexp[1]
         emit "}\n"
         process sexp[3] if sexp[3]
-      when :if_mod, :unless_mod
-        emit "if("
-        emit "!(" if sexp.first == :unless_mod
-        process sexp[1]
-        emit ")" if sexp.first == :unless_mod
-        emit ") {\n"
-        process_statements [sexp[2]]
-        emit "}\n"
-      when :while, :until
-        emit "while("
-        emit "!(" if sexp.first == :until
-        process sexp[1]
-        emit ")" if sexp.first == :until
-        emit ") {\n"
-        process_statements sexp[2]
-        emit "}\n"
-      when :while_mod, :until_mod
-        emit "while("
-        emit "!(" if sexp.first == :until_mod
-        process sexp[1]
-        emit ")" if sexp.first == :until_mod
-        emit ") {\n"
-        process_statements [sexp[2]]
-        emit "}\n"
-      when :for
-        if !sexp[1][0].is_a?(Array) && sexp[2][0] == :dot2 || sexp[2][0] == :dot3
-          emit "for("
-          process sexp[1]
-          emit " = "
-          process sexp[2][1]
-          emit "; "
-          process sexp[1]
-          emit sexp[2][0] == :dot2 ? " <= " : " < "
-          process sexp[2][2]
-          emit "; "
-          process sexp[1]
-          emit "++"
-        else
-          emit "foreach("
-          process sexp[2]
-          emit " as "
-          if !sexp[1][0].is_a?(Array)
-            process sexp[1]
-          elsif sexp[1][0].is_a?(Array) && sexp[1].size == 2
-            process sexp[1][0]
-            emit " => "
-            process sexp[1][1]
-          else
-            raise NotImplementedError, sexp.inspect
-          end
-        end
-        emit ") {\n"
-        process_statements sexp[3]
-        emit "}\n"
-      when :case
-        emit "switch("
-        process sexp[1]
-        emit ") {\n"
-        indent
-        # exp stores the next statement.
-        exp = sexp[2]
-        while exp
-          if exp[0] == :when
-            exp[1].each_with_index do |each_case, i|
-              emit "case "
-              process each_case
-              emit ":"
-              emit " " if i < exp[1].size - 1
-            end
-            emit "\n"
-            process_statements exp[2] if exp[2]
-          elsif exp[0] == :else
-            emit "default:"
-            emit "\n"
-            process_statements exp[1] if exp[1]
-          else
-            raise NotImplementedError, sexp.inspect
-          end
-          indent
-          emit "break;\n"
-          outdent
-          exp = exp[3]
-        end
-        outdent
-        emit "}\n"
-      when :def
-        raise NotImplementedError, sexp.inspect unless sexp[1][0] == :@ident
-        emit "function "
-        emit sexp[1][1]
-        emit "("
-        if sexp[2][0] == :params
-          process sexp[2] # params
-        elsif sexp[2][0] == :paren && sexp[2][1][0] == :params
-          process sexp[2][1]
-        else
-          raise NotImplementedError, sexp.inspect
-        end
-        emit ") {\n"
-        process_statements [sexp[3]]
-        emit "}\n"
-      when :defs
-        raise NotImplementedError, sexp.inspect unless sexp[3][0] == :@ident
-        emit "static function "
-        emit sexp[3][1]
-        emit "("
-        if sexp[4][0] == :params
-          process sexp[4] # params
-        elsif sexp[4][0] == :paren && sexp[4][1][0] == :params
-          process sexp[4][1]
-        else
-          raise NotImplementedError, sexp.inspect
-        end
-        emit ") {\n"
-        process_statements [sexp[5]]
-        emit "}\n"
-      when :class
-        if sexp[1][1][0] != :@const || (sexp[2] && sexp[2][1][0] != :@const)
-          raise NotImplementedError, sexp.inspect
-        end
-        emit "class "
-        emit sexp[1][1][1]
-        emit " extends #{sexp[2][1][1]}" if sexp[2]
-        emit " {\n"
-        process_statements [sexp[3]]
-        emit "}\n"
-      when :params
-        first = true
-        if sexp[1]
-          sexp[1].each do |param|
-            emit ", " unless first
-            first = false
-
-            process param
-          end
-        end
-
-        if sexp[2]
-          sexp[2].each do |param|
-            emit ", " unless first
-            first = false
-
-            process param[0]
-            emit " = "
-            process param[1]
-          end
-        end
-      when :array, :hash, :bare_assoc_hash
-        emit "array("
-        if sexp[1]
-          if sexp[1][0] == :assoclist_from_args
-            process sexp[1]
-          else
-            sexp[1].each_with_index do |param, i|
-              process param
-              emit ", " if i < sexp[1].size - 1
-            end
-          end
-        end
-        emit ")"
+      when :if_mod, :unless_mod then emit_if_mod(sexp)
+      when :while, :until then emit_while(sexp)
+      when :while_mod, :until_mod then emit_while_mod(sexp)
+      when :for then emit_for(sexp)
+      when :case then emit_case(sexp)
+      when :def then emit_def(sexp)
+      when :defs then emit_defs(sexp)
+      when :class then emit_class(sexp)
+      when :params then emit_params(sexp)
+      when :array, :hash, :bare_assoc_hash then emit_array(sexp)
       when :assoclist_from_args
         sexp[1].each_with_index do |param, i|
           process param
@@ -450,7 +536,7 @@ module Phaad
         case sexp[2]
         when :+, :-, :*, :/, :%, :|, :&, :^, :'&&', :'||', :==, :'!=', :>, :<,
             :>=, :<=, :===
-          process(sexp[1])
+            process(sexp[1])
           emit " #{sexp[2]} "
           process(sexp[3])
         when :and
@@ -462,7 +548,7 @@ module Phaad
           emit " || "
           process(sexp[3])
         when :<<
-          process(sexp[1])
+            process(sexp[1])
           emit " . "
           process(sexp[3])
         when :**
