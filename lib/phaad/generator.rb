@@ -3,48 +3,69 @@ module Phaad
 
   module Emitters
 
-    def emit_ifop(sexp)
-      
+    def emit_aref(sexp)
       process sexp[1]
-       emit " ? "
-       process sexp[2]
-       emit " : "
-       process sexp[3]
-      
+      emit "["
+      if sexp[2][1].size == 1
+        process sexp[2] if sexp[2][1][0]
+      else
+        raise NotImplementedError, sexp.inspect
+      end
+      emit "]"
+
+    end
+
+    def emit_aref_field(sexp)
+
+      process sexp[1]
+      emit "["
+      process sexp[2] if sexp[2]
+      emit "]"
+
+    end
+
+    def emit_ifop(sexp)
+
+      process sexp[1]
+      emit " ? "
+      process sexp[2]
+      emit " : "
+      process sexp[3]
+
     end
 
     def emit_else(sexp)
-      
+
       emit "else {\n"
       process_statements(sexp[1]) if sexp[1]
       emit "}\n"
       process sexp[3] if sexp[3]
-      
+
     end
 
     def emit_paren(sexp)
-      
-            emit "("
-            if sexp[1].size == 1
-              process sexp[1][0]
-            else
-              raise NotImplementedError, sexp.inspect
-            end
-            emit ")"
-      
+
+      emit "("
+      if sexp[1].size == 1
+        process sexp[1][0]
+      else
+        raise NotImplementedError, sexp.inspect
+      end
+      emit ")"
+
     end
 
     def emit_opassign(sexp)
-      
+
       raise NotImplementedError, sexp.inspect unless sexp[2][0] == :@op
-       process(sexp[1])
-       if sexp[2][1] == "<<="
-         emit " .= "
-       else
-         emit " #{sexp[2][1]} "
-       end
-       process(sexp[3])
-       
+      process(sexp[1])
+      if sexp[2][1] == "<<="
+        emit " .= "
+      else
+        emit " #{sexp[2][1]} "
+      end
+      process(sexp[3])
+
     end
 
     def emit_assign(sexp)
@@ -489,7 +510,7 @@ module Phaad
         emit "return "
         process sexp[1]
       when :var_field then process(sexp[1])
-      when :@ident 
+      when :@ident
         no_dollar = ["__NAMESPACE__", "__DIR__", "__METHOD__", "__CLASS__", "__FUNCTION__"]
         emit "$" unless no_dollar.include?(sexp[1])
         emit sexp[1]
@@ -508,8 +529,7 @@ module Phaad
           emit ", " unless s == sexp[1].last
         end
       when :call then emit_call(sexp)
-      when :vcall
-        emit "$" + sexp[1][1]
+      when :vcall then emit "$" + sexp[1][1]
       when :command_call then emit_command_call(sexp)
       when :if, :elsif, :unless then emit_if(sexp)
       when :else then emit_else(sexp)
@@ -537,20 +557,8 @@ module Phaad
         process_statements(sexp[1], :indent => false)
         # skip rescue and ensure
       when :paren then emit_paren(sexp)
-      when :aref_field
-        process sexp[1]
-        emit "["
-        process sexp[2] if sexp[2]
-        emit "]"
-      when :aref
-        process sexp[1]
-        emit "["
-        if sexp[2][1].size == 1
-          process sexp[2] if sexp[2][1][0]
-        else
-          raise NotImplementedError, sexp.inspect
-        end
-        emit "]"
+      when :aref_field then emit_aref_field(sexp)
+      when :aref then emit_aref(sexp)
       when :unary
         case sexp[1]
         when :+@, :-@, :~, :'!'
