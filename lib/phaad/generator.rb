@@ -3,38 +3,111 @@ module Phaad
 
   module Emitters
 
-    def emit_string_content(sexp)
+    def emit_ifop(sexp)
       
-      if sexp.size > 1
-         sexp[1..-1].each_with_index do |exp, i|
-           unless exp[0] == :string_embexpr && exp[1][0][0] == :void_stmt
-             process exp
-             emit " . " if i < sexp.size - 2
-           end
-         end
-       else
-         emit '""'
-       end
+      process sexp[1]
+       emit " ? "
+       process sexp[2]
+       emit " : "
+       process sexp[3]
       
     end
 
-    def emit_defs(sexp)
+    def emit_else(sexp)
       
-           raise NotImplementedError, sexp.inspect unless sexp[3][0] == :@ident
-            emit "static function "
-            emit sexp[3][1]
+      emit "else {\n"
+      process_statements(sexp[1]) if sexp[1]
+      emit "}\n"
+      process sexp[3] if sexp[3]
+      
+    end
+
+    def emit_paren(sexp)
+      
             emit "("
-            if sexp[4][0] == :params
-              process sexp[4] # params
-            elsif sexp[4][0] == :paren && sexp[4][1][0] == :params
-              process sexp[4][1]
+            if sexp[1].size == 1
+              process sexp[1][0]
             else
               raise NotImplementedError, sexp.inspect
             end
-            emit ") {\n"
-            process_statements [sexp[5]]
-            emit "}\n"
+            emit ")"
       
+    end
+
+    def emit_opassign(sexp)
+      
+      raise NotImplementedError, sexp.inspect unless sexp[2][0] == :@op
+       process(sexp[1])
+       if sexp[2][1] == "<<="
+         emit " .= "
+       else
+         emit " #{sexp[2][1]} "
+       end
+       process(sexp[3])
+       
+    end
+
+    def emit_assign(sexp)
+      process(sexp[1])
+      emit " = "
+      process(sexp[2])
+    end
+
+    def emit_regexp_literal(sexp)
+      emit '"/'
+      emit sexp[1][0][1]
+      process sexp[2]
+      emit '"'
+    end
+
+    def emit_string_embexpr(sexp)
+      no_brackets = [:var_ref, :method_add_arg, :command]
+      emit "(" unless no_brackets.include?(sexp[1][0][0])
+      process sexp[1][0]
+      emit ")" unless no_brackets.include?(sexp[1][0][0])
+    end
+
+
+    def emit_tstring_content(sexp)
+      emit "\"#{sexp[1].gsub('"', '\"')}\""
+    end
+
+    def emit_xstring_literal(sexp)
+      emit sexp[1][0][1]
+    end
+
+    def emit_string_content(sexp)
+
+      if sexp.size > 1
+        sexp[1..-1].each_with_index do |exp, i|
+          unless exp[0] == :string_embexpr && exp[1][0][0] == :void_stmt
+            process exp
+            emit " . " if i < sexp.size - 2
+          end
+        end
+      else
+        emit '""'
+      end
+
+    end
+
+    def emit_defs(sexp)
+
+      raise NotImplementedError, sexp.inspect unless sexp[3][0] == :@ident
+      emit "static function "
+      emit sexp[3][1]
+      emit "("
+      if sexp[4][0] == :params
+        process sexp[4] # params
+      elsif sexp[4][0] == :paren && sexp[4][1][0] == :params
+        process sexp[4][1]
+      else
+        raise NotImplementedError, sexp.inspect
+      end
+      emit ") {\n"
+      process_statements [sexp[5]]
+      emit "}\n"
+
     end
 
     def emit_def(sexp)
@@ -397,73 +470,37 @@ module Phaad
 
 
       when :xstring_literal
-        emit sexp[1][0][1]
-
-
+        emit_xstring_literal(sexp)
       when :void_stmt
       when :@int, :@float then emit sexp[1]
-      when :@tstring_content
-        emit "\"#{sexp[1].gsub('"', '\"')}\""
+      when :@tstring_content then emit_tstring_content(sexp)
       when :string_content then emit_string_content(sexp)
-      when :string_literal
-        process(sexp[1])
-      when :string_embexpr
-        no_brackets = [:var_ref, :method_add_arg, :command]
-        emit "(" unless no_brackets.include?(sexp[1][0][0])
-        process sexp[1][0]
-        emit ")" unless no_brackets.include?(sexp[1][0][0])
-      when :regexp_literal
-        emit '"/'
-        emit sexp[1][0][1]
-        process sexp[2]
-        emit '"'
-      when :@regexp_end
-        emit sexp[1]
-      when :symbol_literal
-        emit sexp[1][1][1].inspect
-      when :@label
-        emit sexp[1][0..-2].inspect
-      when :dyna_symbol
-        process(sexp[1][0])
-      when :assign
-        process(sexp[1])
-        emit " = "
-        process(sexp[2])
+      when :string_literal then process(sexp[1])
+      when :string_embexpr then emit_string_embexpr(sexp)
+      when :regexp_literal then emit_regexp_literal(sexp)
+      when :@regexp_end then emit sexp[1]
+      when :symbol_literal then emit sexp[1][1][1].inspect
+      when :@label then emit sexp[1][0..-2].inspect
+      when :dyna_symbol then process(sexp[1][0])
+      when :assign then emit_assign(sexp)
       when :massign then emit_massign(sexp)
-      when :opassign
-        raise NotImplementedError, sexp.inspect unless sexp[2][0] == :@op
-        process(sexp[1])
-        if sexp[2][1] == "<<="
-          emit " .= "
-        else
-          emit " #{sexp[2][1]} "
-        end
-        process(sexp[3])
+      when :opassign then emit_opassign(sexp)
       when :return
         emit "return "
         process sexp[1]
-      when :var_field
-        process(sexp[1])
-      when :@ident
+      when :var_field then process(sexp[1])
+      when :@ident 
         no_dollar = ["__NAMESPACE__", "__DIR__", "__METHOD__", "__CLASS__", "__FUNCTION__"]
         emit "$" unless no_dollar.include?(sexp[1])
         emit sexp[1]
       when :@ivar
         emit "$this->"
         emit sexp[1][1..-1]
-      when :@const
-        emit sexp[1]
-      when :break
-        emit "break"
-      when :next
-        emit "continue"
+      when :@const then emit sexp[1]
+      when :break then emit "break"
+      when :next then emit "continue"
       when :method_add_arg then emit_method_add_arg(sexp)
-      when :ifop
-        process sexp[1]
-        emit " ? "
-        process sexp[2]
-        emit " : "
-        process sexp[3]
+      when :ifop then emit_ifop(sexp)
       when :command then emit_command(sexp)
       when :args_add_block
         sexp[1].each do |s|
@@ -475,11 +512,8 @@ module Phaad
         emit "$" + sexp[1][1]
       when :command_call then emit_command_call(sexp)
       when :if, :elsif, :unless then emit_if(sexp)
-      when :else
-        emit "else {\n"
-        process_statements(sexp[1]) if sexp[1]
-        emit "}\n"
-        process sexp[3] if sexp[3]
+      when :else then emit_else(sexp)
+
       when :if_mod, :unless_mod then emit_if_mod(sexp)
       when :while, :until then emit_while(sexp)
       when :while_mod, :until_mod then emit_while_mod(sexp)
@@ -502,14 +536,7 @@ module Phaad
       when :bodystmt
         process_statements(sexp[1], :indent => false)
         # skip rescue and ensure
-      when :paren
-        emit "("
-        if sexp[1].size == 1
-          process sexp[1][0]
-        else
-          raise NotImplementedError, sexp.inspect
-        end
-        emit ")"
+      when :paren then emit_paren(sexp)
       when :aref_field
         process sexp[1]
         emit "["
