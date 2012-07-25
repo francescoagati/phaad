@@ -1,1 +1,7 @@
-a.x.c=12
+class A
+  
+  public def ciao
+  
+  end
+  
+end

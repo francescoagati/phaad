@@ -114,6 +114,7 @@ module Phaad
 
     def emit_defs(sexp)
 
+
       raise NotImplementedError, sexp.inspect unless sexp[3][0] == :@ident
       emit "static function "
       emit sexp[3][1]
@@ -132,6 +133,7 @@ module Phaad
     end
 
     def emit_def(sexp)
+
       raise NotImplementedError, sexp.inspect unless sexp[1][0] == :@ident
       emit "function "
       emit sexp[1][1]
@@ -318,6 +320,8 @@ module Phaad
 
     def emit_command(sexp)
 
+      p sexp[2]
+
       if sexp[1][0] == :@ident
         no_brackets = %w{global echo var public}
         emit sexp[1][1]
@@ -424,12 +428,19 @@ module Phaad
       if sexp[1][1][0] != :@const || (sexp[2] && sexp[2][1][0] != :@const)
         raise NotImplementedError, sexp.inspect
       end
-      emit "class "
-      emit sexp[1][1][1]
-      emit " extends #{sexp[2][1][1]}" if sexp[2]
-      emit " {\n"
-      process_statements [sexp[3]]
-      emit "}\n"
+
+      emit_context :class do
+
+        emit "class "
+        emit sexp[1][1][1]
+        emit " extends #{sexp[2][1][1]}" if sexp[2]
+        emit " {\n"
+        emit_context :class_body do
+          process_statements [sexp[3]]
+        end
+        emit "}\n"
+      end
+
     end
 
 
@@ -477,6 +488,17 @@ module Phaad
 
     def outdent
       @indent_level -= 1
+    end
+
+    def is_context?(context)
+      instance_variable_get "@#{context.to_s}"
+    end
+
+
+    def emit_context(context,&blk)
+      instance_variable_set "@#{context.to_s}",true
+      blk.call
+      instance_variable_set "@#{context.to_s}",false
     end
 
     def emit(*strings)
