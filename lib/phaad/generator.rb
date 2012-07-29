@@ -15,6 +15,10 @@ module Phaad
 
     end
 
+    def emit_field(sexp)
+      process sexp[1]
+    end
+
     def emit_aref_field(sexp)
 
       process sexp[1]
@@ -94,6 +98,8 @@ module Phaad
     end
 
     def emit_xstring_literal(sexp)
+      p sexp
+      p sexp[1][0][1]
       emit sexp[1][0][1]
     end
 
@@ -135,7 +141,12 @@ module Phaad
     def emit_def(sexp)
 
       raise NotImplementedError, sexp.inspect unless sexp[1][0] == :@ident
+
+      #if is_context?(:class_body)
+      #  emit "public function "
+      #else
       emit "function "
+      #end
       emit sexp[1][1]
       emit "("
       if sexp[2][0] == :params
@@ -476,8 +487,11 @@ module Phaad
         should_not_be = [ [:bodystmt, [[:void_stmt]], nil, nil, nil] ]
         first_should_not_be = [:void_stmt, :def, :bodystmt, :if, :else, :elsif,
                                :unless, :while, :until, :while_mod, :until_mod, :if_mod, :unless_mod,
-                               :massign, :class, :for, :case, :defs]
-        emit ";\n" if !should_not_be.include?(sexp) && !first_should_not_be.include?(sexp.first)
+                               :massign, :class, :for, :case, :defs, :xstring_literal]
+  
+        emit ";\n" if !should_not_be.include?(sexp) && !first_should_not_be.include?(sexp.first) 
+        emit "\n" if sexp[0] == :xstring_literal
+        
       end
       outdent unless options[:indent] == false
     end
@@ -537,8 +551,12 @@ module Phaad
         emit "$" unless no_dollar.include?(sexp[1])
         emit sexp[1]
       when :@ivar
-        emit "$this->"
-        emit sexp[1][1..-1]
+        
+        #if is_context?(:class_body)
+          emit "$this->"
+          emit sexp[1][1..-1]
+        #end
+
       when :@const then emit sexp[1]
       when :break then emit "break"
       when :next then emit "continue"
@@ -556,6 +574,7 @@ module Phaad
       when :if, :elsif, :unless then emit_if(sexp)
       when :else then emit_else(sexp)
 
+      when :field then emit_field(sexp)
       when :if_mod, :unless_mod then emit_if_mod(sexp)
       when :while, :until then emit_while(sexp)
       when :while_mod, :until_mod then emit_while_mod(sexp)
