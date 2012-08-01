@@ -1,7 +1,47 @@
+require 'pp'
 module Phaad
 
 
   module Emitters
+
+
+
+    #def emit_mlhs_paren(sexp)
+    #  return
+    #  pp sexp[1] #[[1..sexp.length]
+    #  process_statements sexp[1]
+    #end
+
+    def emit_lambda(sexp)
+
+      emit "function "
+       emit "("
+       if sexp[1][1][0] == :params
+         process sexp[1][1] # params
+      # elsif sexp[2][0] == :paren && sexp[2][1][0] == :params
+      #   process sexp[2][1]
+      # else
+      #   raise NotImplementedError, sexp.inspect
+      end
+       emit ") {\n"
+       puts "-------------------------"
+       pp [:bodystmt, sexp[2]]
+       process [:bodystmt, sexp[2]]
+       emit "}\n"
+    
+    
+    end
+
+    def emit_method_add_block(sexp)
+      
+      p "aaaaa"
+      p sexp[2][1][1]
+      if sexp[2][0] == :do_block 
+        #process_statements [:lambda,sexp[2][1][1]]
+      end
+      process sexp[1]
+    end
+
 
     def emit_aref(sexp)
       process sexp[1]
@@ -15,10 +55,15 @@ module Phaad
 
     end
 
+
     def emit_field(sexp)
       process sexp[1]
     end
 
+    def emit_command_call(sexp)
+      process sexp[1]
+    end
+    
     def emit_aref_field(sexp)
 
       process sexp[1]
@@ -49,14 +94,20 @@ module Phaad
 
     def emit_paren(sexp)
 
-      emit "("
-      if sexp[1].size == 1
-        process sexp[1][0]
-      else
-        raise NotImplementedError, sexp.inspect
-      end
-      emit ")"
-
+      #if sexp[1][0] == :params
+        
+      #else
+        
+        emit "("
+        if sexp[1].size == 1
+          process sexp[1][0]
+        else
+          raise NotImplementedError, sexp.inspect
+        end
+        emit ")"
+        
+      #end
+      
     end
 
     def emit_opassign(sexp)
@@ -142,11 +193,8 @@ module Phaad
 
       raise NotImplementedError, sexp.inspect unless sexp[1][0] == :@ident
 
-      #if is_context?(:class_body)
-      #  emit "public function "
-      #else
       emit "function "
-      #end
+
       emit sexp[1][1]
       emit "("
       if sexp[2][0] == :params
@@ -354,6 +402,14 @@ module Phaad
       if sexp[1][0]== :vcall
         process sexp[1][1]
       end
+      
+      p sexp[1][1]
+
+      if sexp[1][0]== :var_ref
+        process sexp[1][1]
+        return
+      end
+      
 
       if sexp[1][0] == :var_ref && sexp[1][1][0] == :@ident && sexp[2] == :"." &&
           sexp[3][0] == :@ident && sexp[4][0] == :args_add_block
@@ -473,6 +529,8 @@ module Phaad
         @sexp = Ripper.sexp(str_or_sexp)
       end
 
+      pp @sexp
+
       @emitted = ""
       @indent_level = 0
       @indent_with = "  "
@@ -525,6 +583,12 @@ module Phaad
     def process(sexp)
       case sexp.first
 
+      when :lambda then emit_lambda(sexp)
+        
+
+      when :emit_command_call then emit_command_call(sexp)
+
+      when :mlhs_paren then emit_mlhs_paren(sexp)
 
       when :xstring_literal
         emit_xstring_literal(sexp)
@@ -648,6 +712,9 @@ module Phaad
         else
           raise NotImplementedError, sexp.inspect
         end
+        
+      when :method_add_block then emit_method_add_block(sexp)
+        
       when :var_ref
         # probably need to remove this
         if sexp[1][0] == :@kw
