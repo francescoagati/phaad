@@ -529,7 +529,7 @@ module Phaad
         @sexp = Ripper.sexp(str_or_sexp)
       end
 
-      pp @sexp
+      #pp @sexp
 
       @emitted = ""
       @indent_level = 0
