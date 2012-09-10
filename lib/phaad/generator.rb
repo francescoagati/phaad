@@ -15,28 +15,28 @@ module Phaad
     def emit_lambda(sexp)
 
       emit "function "
-       emit "("
-       if sexp[1][1][0] == :params
-         process sexp[1][1] # params
-      # elsif sexp[2][0] == :paren && sexp[2][1][0] == :params
-      #   process sexp[2][1]
-      # else
-      #   raise NotImplementedError, sexp.inspect
+      emit "("
+      if sexp[1][1][0] == :params
+        process sexp[1][1] # params
+        # elsif sexp[2][0] == :paren && sexp[2][1][0] == :params
+        #   process sexp[2][1]
+        # else
+        #   raise NotImplementedError, sexp.inspect
       end
-       emit ") {\n"
-       puts "-------------------------"
-       pp [:bodystmt, sexp[2]]
-       process [:bodystmt, sexp[2]]
-       emit "}\n"
-    
-    
+      emit ") {\n"
+      puts "-------------------------"
+      pp [:bodystmt, sexp[2]]
+      process [:bodystmt, sexp[2]]
+      emit "}\n"
+
+
     end
 
     def emit_method_add_block(sexp)
-      
+
       p "aaaaa"
       p sexp[2][1][1]
-      if sexp[2][0] == :do_block 
+      if sexp[2][0] == :do_block
         #process_statements [:lambda,sexp[2][1][1]]
       end
       process sexp[1]
@@ -63,7 +63,7 @@ module Phaad
     def emit_command_call(sexp)
       process sexp[1]
     end
-    
+
     def emit_aref_field(sexp)
 
       process sexp[1]
@@ -95,19 +95,19 @@ module Phaad
     def emit_paren(sexp)
 
       #if sexp[1][0] == :params
-        
+
       #else
-        
-        emit "("
-        if sexp[1].size == 1
-          process sexp[1][0]
-        else
-          raise NotImplementedError, sexp.inspect
-        end
-        emit ")"
-        
+
+      emit "("
+      if sexp[1].size == 1
+        process sexp[1][0]
+      else
+        raise NotImplementedError, sexp.inspect
+      end
+      emit ")"
+
       #end
-      
+
     end
 
     def emit_opassign(sexp)
@@ -360,6 +360,8 @@ module Phaad
 
     def emit_call(sexp)
 
+      pp sexp
+
       if sexp[1][1][0] == :@const
         if sexp[3][1] == "new"
           emit "new "
@@ -402,14 +404,14 @@ module Phaad
       if sexp[1][0]== :vcall
         process sexp[1][1]
       end
-      
+
       p sexp[1][1]
 
       if sexp[1][0]== :var_ref
         process sexp[1][1]
         return
       end
-      
+
 
       if sexp[1][0] == :var_ref && sexp[1][1][0] == :@ident && sexp[2] == :"." &&
           sexp[3][0] == :@ident && sexp[4][0] == :args_add_block
@@ -529,7 +531,7 @@ module Phaad
         @sexp = Ripper.sexp(str_or_sexp)
       end
 
-      pp @sexp
+      #pp @sexp
 
       @emitted = ""
       @indent_level = 0
@@ -546,10 +548,10 @@ module Phaad
         first_should_not_be = [:void_stmt, :def, :bodystmt, :if, :else, :elsif,
                                :unless, :while, :until, :while_mod, :until_mod, :if_mod, :unless_mod,
                                :massign, :class, :for, :case, :defs, :xstring_literal]
-  
-        emit ";\n" if !should_not_be.include?(sexp) && !first_should_not_be.include?(sexp.first) 
+
+        emit ";\n" if !should_not_be.include?(sexp) && !first_should_not_be.include?(sexp.first)
         emit "\n" if sexp[0] == :xstring_literal
-        
+
       end
       outdent unless options[:indent] == false
     end
@@ -584,7 +586,7 @@ module Phaad
       case sexp.first
 
       when :lambda then emit_lambda(sexp)
-        
+
 
       when :emit_command_call then emit_command_call(sexp)
 
@@ -615,10 +617,10 @@ module Phaad
         emit "$" unless no_dollar.include?(sexp[1])
         emit sexp[1]
       when :@ivar
-        
+
         #if is_context?(:class_body)
-          emit "$this->"
-          emit sexp[1][1..-1]
+        emit "$this->"
+        emit sexp[1][1..-1]
         #end
 
       when :@const then emit sexp[1]
@@ -712,9 +714,9 @@ module Phaad
         else
           raise NotImplementedError, sexp.inspect
         end
-        
+
       when :method_add_block then emit_method_add_block(sexp)
-        
+
       when :var_ref
         # probably need to remove this
         if sexp[1][0] == :@kw
